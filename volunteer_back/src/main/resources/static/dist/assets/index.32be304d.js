@@ -1,0 +1,1 @@
+import{_ as o}from"./_plugin-vue_export-helper.cdc0426e.js";import{b as _,o as t,c as s,e as n}from"./index.a5f3312e.js";const c={class:"school-container"},r={__name:"index",setup(a){return(p,i)=>{const e=_("router-view");return t(),s("div",c,[n(e)])}}},l=o(r,[["__scopeId","data-v-25f8e41f"]]);export{l as default};

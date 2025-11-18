@@ -1,0 +1,685 @@
+-- 存储过程
+
+-- 1智能志愿推荐系统
+
+DELIMITER //
+DROP PROCEDURE IF EXISTS flexible_recommendation //
+CREATE PROCEDURE flexible_recommendation(
+    IN stu_id VARCHAR(18)  -- 输入参数：学生ID
+)
+BEGIN
+    DECLARE stu_score DECIMAL(5,1);  -- 声明变量存储学生成绩
+
+    -- 获取学生成绩，使用IFNULL函数处理NULL值
+    -- 如果成绩为NULL，则默认设为600分
+    SELECT IFNULL(college_entrance_exam_score, 600) INTO stu_score
+    FROM student WHERE student_id = stu_id;
+
+    -- 双重保险：如果没有找到学生记录，stu_score会是NULL
+    -- 此时再次设置默认分数
+    IF stu_score IS NULL THEN
+        SET stu_score = 600;  -- 设置默认分数为600
+    END IF;
+
+    -- 输出调试信息，显示当前使用的学生分数
+    -- 这有助于确认是使用了实际分数还是默认分数
+    SELECT stu_score AS student_score;
+
+    -- 核心查询：推荐匹配的大学和专业
+    SELECT
+        u.university_name,              -- 大学名称
+        m.major_name,                   -- 专业名称
+        ha.admission_number AS last_year_admission,  -- 去年录取分数
+        ABS(stu_score - ha.admission_number) AS score_difference  -- 计算分数差距
+    FROM university u
+    JOIN historical_admission ha ON u.university_id = ha.university_id  -- 关联历史录取数据
+    JOIN major m ON ha.major_id = m.major_id  -- 关联专业信息
+    ORDER BY score_difference  -- 按分数差距排序，差距越小越靠前
+    LIMIT 20;  -- 限制返回20条记录
+END //
+DELIMITER ;
+
+-- 调用灵活推荐存储过程
+CALL flexible_recommendation('20230001');
+
+
+
+-- 2 志愿冲突检测
+DELIMITER //
+DROP PROCEDURE IF EXISTS check_volunteer_conflict //
+CREATE PROCEDURE check_volunteer_conflict(IN stu_id VARCHAR(18))
+BEGIN
+    -- 首先检查学生是否存在
+    SELECT COUNT(*) INTO @student_exists FROM student WHERE student_id = stu_id;
+    SELECT CONCAT('学生存在: ', @student_exists) AS debug_info;
+
+    -- 检查学生志愿数量
+    SELECT COUNT(*) INTO @volunteer_count FROM volunteer_relation WHERE student_id = stu_id;
+    SELECT CONCAT('志愿数量: ', @volunteer_count) AS debug_info;
+
+    -- 检查历史录取数据
+    SELECT
+        COUNT(*) INTO @admission_count
+    FROM volunteer_relation vr
+    JOIN historical_admission ha ON vr.university_id = ha.university_id
+                               AND vr.major_id = ha.major_id
+    WHERE vr.student_id = stu_id;
+    SELECT CONCAT('匹配的历史录取数据: ', @admission_count) AS debug_info;
+
+    -- 检查年份匹配情况
+    SELECT
+        COUNT(*) INTO @year_match_count
+    FROM volunteer_relation vr
+    JOIN historical_admission ha ON vr.university_id = ha.university_id
+                               AND vr.major_id = ha.major_id
+                               AND ha.year = YEAR(CURDATE()) - 1
+    WHERE vr.student_id = stu_id;
+    SELECT CONCAT('去年录取数据匹配: ', @year_match_count) AS debug_info;
+
+    -- 显示所有志愿的分数线情况(不筛选年份)
+    SELECT
+        vr.volunteer_order,
+        u.university_name,
+        m.major_name,
+        ha.year,
+        ha.admission_number
+    FROM volunteer_relation vr
+    JOIN university u ON vr.university_id = u.university_id
+    JOIN major m ON vr.major_id = m.major_id
+    LEFT JOIN historical_admission ha ON vr.university_id = ha.university_id
+                                    AND vr.major_id = ha.major_id
+    WHERE vr.student_id = stu_id
+    ORDER BY vr.volunteer_order;
+
+    -- 修改后的志愿检测查询(放宽年份限制)
+    SELECT
+        vr1.volunteer_order AS order1,
+        u1.university_name AS uni1,
+        m1.major_name AS major1,
+        ha1.admission_number AS score1,
+        vr2.volunteer_order AS order2,
+        u2.university_name AS uni2,
+        m2.major_name AS major2,
+        ha2.admission_number AS score2,
+        CASE
+            WHEN ha1.admission_number < ha2.admission_number THEN '风险：志愿倒挂'
+            WHEN ha1.admission_number - ha2.admission_number < 10 THEN '提示：梯度不足'
+            ELSE '正常'
+        END AS advice
+    FROM volunteer_relation vr1
+    JOIN volunteer_relation vr2 ON vr1.student_id = vr2.student_id
+                              AND vr1.volunteer_order < vr2.volunteer_order
+    JOIN university u1 ON vr1.university_id = u1.university_id
+    JOIN major m1 ON vr1.major_id = m1.major_id
+    JOIN university u2 ON vr2.university_id = u2.university_id
+    JOIN major m2 ON vr2.major_id = m2.major_id
+    JOIN historical_admission ha1 ON vr1.university_id = ha1.university_id
+                                 AND vr1.major_id = ha1.major_id
+    JOIN historical_admission ha2 ON vr2.university_id = ha2.university_id
+                                 AND vr2.major_id = ha2.major_id
+    WHERE vr1.student_id = stu_id;
+END //
+DELIMITER ;
+
+-- 调用调试版存储过程
+CALL check_volunteer_conflict('20230001');
+
+
+
+
+### 3. 录取概率预测模型
+DELIMITER //
+DROP PROCEDURE IF EXISTS predict_admission_probability //
+CREATE PROCEDURE predict_admission_probability(
+    IN stu_id VARCHAR(18),
+    IN uni_id VARCHAR(10),
+    IN maj_id VARCHAR(10)
+)
+BEGIN
+    DECLARE stu_score DECIMAL(5,1);
+    DECLARE avg_admit DECIMAL(5,1);
+    DECLARE std_dev DECIMAL(5,1);
+    DECLARE z_score DECIMAL(10,6);
+    DECLARE prob DECIMAL(5,2);
+    DECLARE record_count INT;
+
+    -- 获取学生成绩
+    SELECT IFNULL(college_entrance_exam_score, 0) INTO stu_score
+    FROM student WHERE student_id = stu_id;
+
+    -- 检查是否有历史录取数据
+    SELECT COUNT(*) INTO record_count
+    FROM historical_admission
+    WHERE university_id = uni_id AND major_id = maj_id;
+
+    -- 如果没有历史数据，使用专业分数线
+    IF record_count = 0 THEN
+        SELECT line_score INTO avg_admit FROM major WHERE major_id = maj_id;
+        SET std_dev = 10; -- 默认标准差
+    ELSE
+        -- 计算历年平均录取线和标准差
+        SELECT
+            AVG(admission_number),
+            IFNULL(STDDEV(admission_number), 10)
+        INTO avg_admit, std_dev
+        FROM historical_admission
+        WHERE university_id = uni_id AND major_id = maj_id;
+    END IF;
+
+    -- 确保平均分和标准差不为NULL
+    SET avg_admit = IFNULL(avg_admit, 600);
+    SET std_dev = IFNULL(std_dev, 10);
+
+    -- 使用正态分布计算概率
+    IF std_dev > 0 THEN
+        -- 计算z-score
+        SET z_score = (stu_score - avg_admit) / std_dev;
+
+        -- 使用更准确的正态分布累积函数近似
+        IF z_score < 0 THEN
+            SET prob = 50 - 50 * (1 - EXP(-0.717 * z_score - 0.416 * z_score * z_score));
+        ELSE
+            SET prob = 50 + 50 * (1 - EXP(-0.717 * z_score - 0.416 * z_score * z_score));
+        END IF;
+    ELSE
+        SET prob = IF(stu_score >= avg_admit, 100, 0);
+    END IF;
+
+    -- 返回结果
+    SELECT
+        u.university_name,
+        m.major_name,
+        stu_score AS your_score,
+        avg_admit AS avg_admission_score,
+        std_dev AS score_std_dev,
+        record_count AS historical_data_count,
+        ROUND(GREATEST(0, LEAST(100, prob)), 2) AS admission_probability,
+        CASE
+            WHEN prob > 80 THEN '高概率'
+            WHEN prob > 50 THEN '中等概率'
+            WHEN prob > 20 THEN '低概率'
+            ELSE '极小概率'
+        END AS probability_level
+    FROM university u
+    JOIN major m ON m.major_id = maj_id
+    WHERE u.university_id = uni_id;
+END //
+DELIMITER ;
+
+-- 调用存储过程
+CALL predict_admission_probability('20230002', '1003', '2001');
+
+
+
+-- 4. 专业就业前景分析
+DELIMITER //
+DROP PROCEDURE IF EXISTS analyze_major_employment_prospects //
+CREATE PROCEDURE analyze_major_employment_prospects(
+    IN maj_id VARCHAR(10)
+)
+proc_label: BEGIN
+    DECLARE major_exists INT;
+    DECLARE major_name_var VARCHAR(50);
+    DECLARE category_name_var VARCHAR(30);
+    DECLARE degree_type_var VARCHAR(20);
+    DECLARE schooling_length_var TINYINT;
+    DECLARE avg_employment_rate DECIMAL(5,2);
+    DECLARE avg_salary DECIMAL(8,2);
+
+    -- 检查专业是否存在
+    SELECT COUNT(*) INTO major_exists FROM major WHERE major_id = maj_id;
+
+    -- 如果专业不存在，显示可用专业并退出
+    IF major_exists = 0 THEN
+        SELECT 'ERROR: 专业ID不存在，以下是可能的专业:' AS message;
+        SELECT major_id, major_name FROM major ORDER BY major_id LIMIT 10;
+        LEAVE proc_label;
+    END IF;
+
+    -- 获取专业基本信息
+    SELECT
+        m.major_name,
+        dc.category_name,
+        m.degree_type,
+        m.schooling_length
+    INTO
+        major_name_var,
+        category_name_var,
+        degree_type_var,
+        schooling_length_var
+    FROM major m
+    JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+    WHERE m.major_id = maj_id;
+
+    -- 生成模拟数据
+    SET avg_employment_rate = ROUND(70 + RAND() * 20, 2);
+    SET avg_salary = ROUND(7000 + RAND() * 3000, 2);
+
+    -- 整合所有信息到一个表中
+    SELECT
+        maj_id AS major_id,
+        major_name_var AS major_name,
+        category_name_var AS discipline_category,
+        degree_type_var AS degree_type,
+        schooling_length_var AS schooling_length,
+        avg_employment_rate AS average_employment_rate,
+        avg_salary AS average_salary,
+        CASE
+            WHEN avg_employment_rate > 85 THEN '就业率高'
+            WHEN avg_employment_rate > 75 THEN '就业率良好'
+            ELSE '就业率一般'
+        END AS employment_status,
+        CASE
+            WHEN major_name_var LIKE '%计算机%' OR major_name_var LIKE '%软件%' OR major_name_var LIKE '%人工智能%' THEN
+                '信息技术行业持续增长，就业前景广阔。'
+            WHEN major_name_var LIKE '%电子%' OR major_name_var LIKE '%通信%' THEN
+                '电子信息行业发展稳定，5G技术应用带来新机遇。'
+            WHEN major_name_var LIKE '%医%' OR major_name_var LIKE '%药%' OR major_name_var LIKE '%护理%' THEN
+                '医疗健康行业需求稳定，老龄化趋势增加医疗服务需求。'
+            WHEN major_name_var LIKE '%金融%' OR major_name_var LIKE '%经济%' OR major_name_var LIKE '%会计%' THEN
+                '金融行业竞争激烈，但高端人才需求旺盛。'
+            WHEN major_name_var LIKE '%管理%' THEN
+                '管理类人才需求广泛，但需要复合型能力。'
+            WHEN category_name_var LIKE '%工学%' THEN
+                '工程技术领域就业稳定，制造业升级带来新需求。'
+            WHEN category_name_var LIKE '%理学%' THEN
+                '基础研究领域需深入专业知识，交叉学科应用前景广。'
+            WHEN category_name_var LIKE '%文学%' THEN
+                '人文领域就业面广，新媒体和文化创意产业提供新机会。'
+            ELSE '该专业领域就业情况受市场影响，建议关注行业动态。'
+        END AS industry_outlook,
+        CASE
+            WHEN RAND() > 0.7 THEN '高需求行业'
+            WHEN RAND() > 0.4 THEN '稳定需求行业'
+            ELSE '竞争激烈行业'
+        END AS demand_level,
+        CASE
+            WHEN RAND() > 0.6 THEN '建议积极参与实习实践，提前积累行业经验'
+            WHEN RAND() > 0.3 THEN '建议关注行业前沿技术，提升专业核心竞争力'
+            ELSE '建议培养跨学科能力，拓展就业选择面'
+        END AS career_advice,
+        (SELECT GROUP_CONCAT(m2.major_name SEPARATOR '、')
+         FROM major m2
+         WHERE m2.discipline_category_id = (SELECT discipline_category_id FROM major WHERE major_id = maj_id)
+           AND m2.major_id != maj_id
+         LIMIT 5) AS related_majors;
+END //
+DELIMITER ;
+
+call analyze_major_employment_prospects('080901');
+
+
+
+
+### 5. 省份分数线分析
+DELIMITER //
+DROP PROCEDURE IF EXISTS analyze_province_score_trends //
+CREATE PROCEDURE analyze_province_score_trends(
+    IN prov_id INT,
+    IN disc_category_id INT
+)
+proc_label: BEGIN
+    DECLARE province_exists INT DEFAULT 0;
+    DECLARE category_exists INT DEFAULT 0;
+    DECLARE province_name_var VARCHAR(20);
+    DECLARE region_var VARCHAR(20);
+    DECLARE category_name_var VARCHAR(30);
+
+    -- 检查省份是否存在
+    SELECT COUNT(*) INTO province_exists FROM province WHERE province_id = prov_id;
+
+    IF province_exists > 0 THEN
+        SELECT province_name, region INTO province_name_var, region_var
+        FROM province WHERE province_id = prov_id LIMIT 1;
+    END IF;
+
+    -- 检查学科门类是否存在
+    SELECT COUNT(*) INTO category_exists FROM discipline_category WHERE category_id = disc_category_id;
+
+    IF category_exists > 0 THEN
+        SELECT category_name INTO category_name_var
+        FROM discipline_category WHERE category_id = disc_category_id LIMIT 1;
+    END IF;
+
+    -- 如果数据不存在，显示错误
+    IF province_exists = 0 OR category_exists = 0 THEN
+        SELECT
+            CONCAT('错误: ',
+                  IF(province_exists = 0, '省份ID不存在', ''),
+                  IF(category_exists = 0, '学科门类ID不存在', '')
+            ) AS message;
+        LEAVE proc_label;
+    END IF;
+
+    -- 返回单一结果集，包含所有信息
+    SELECT
+        prov_id AS province_id,
+        province_name_var AS province_name,
+        region_var AS region,
+        disc_category_id AS category_id,
+        category_name_var AS category_name,
+
+        -- 最低分数线趋势（模拟数据）
+        ROUND(400 + RAND() * 50) AS min_score_current_year,
+        ROUND(390 + RAND() * 50) AS min_score_last_year,
+        ROUND(380 + RAND() * 50) AS min_score_two_years_ago,
+
+        -- 平均分数线趋势（模拟数据）
+        ROUND(500 + RAND() * 50) AS avg_score_current_year,
+        ROUND(490 + RAND() * 50) AS avg_score_last_year,
+        ROUND(480 + RAND() * 50) AS avg_score_two_years_ago,
+
+        -- 最高分数线趋势（模拟数据）
+        ROUND(550 + RAND() * 50) AS max_score_current_year,
+        ROUND(540 + RAND() * 50) AS max_score_last_year,
+        ROUND(530 + RAND() * 50) AS max_score_two_years_ago,
+
+        -- 分数线趋势分析
+        CASE
+            WHEN RAND() > 0.6 THEN '分数线呈上升趋势，竞争日益激烈'
+            WHEN RAND() > 0.3 THEN '分数线基本稳定，竞争强度适中'
+            ELSE '分数线略有波动，关注年度变化'
+        END AS score_trend_analysis,
+
+        -- 热门大学（简化处理）
+        '该省份热门高校' AS popular_universities,
+
+        -- 录取难度评估
+        CASE
+            WHEN RAND() > 0.7 THEN '高'
+            WHEN RAND() > 0.4 THEN '中'
+            ELSE '适中'
+        END AS admission_difficulty,
+
+        -- 建议
+        CASE
+            WHEN RAND() > 0.5 THEN '建议关注一流大学和特色学科建设高校'
+            ELSE '建议考虑该省份优势学科和重点专业'
+        END AS recommendation;
+END //
+DELIMITER ;
+
+call analyze_province_score_trends(1, 2);
+
+
+### 6. 学生志愿综合分析
+DELIMITER //
+DROP PROCEDURE IF EXISTS analyze_student_volunteer_strategy //
+CREATE PROCEDURE analyze_student_volunteer_strategy(
+    IN stu_id VARCHAR(18)
+)
+proc_label: BEGIN
+    DECLARE stu_score DECIMAL(5,1);
+    DECLARE stu_province_id INT;
+    DECLARE stu_exists INT DEFAULT 0;
+    DECLARE stu_name VARCHAR(50);
+
+    -- 检查学生是否存在
+    SELECT COUNT(*) INTO stu_exists FROM student WHERE student_id = stu_id;
+
+    IF stu_exists = 0 THEN
+        SELECT '错误: 学生ID不存在' AS message;
+        LEAVE proc_label;
+    END IF;
+
+    -- 获取学生基本信息
+    SELECT
+        student_name,
+        college_entrance_exam_score,
+        province_id
+    INTO
+        stu_name,
+        stu_score,
+        stu_province_id
+    FROM student
+    WHERE student_id = stu_id;
+
+    -- 显示学生基本信息（调试用）
+    SELECT
+        stu_id AS student_id,
+        stu_name AS student_name,
+        stu_score AS college_entrance_exam_score,
+        stu_province_id AS province_id;
+
+    -- 显示该学生的志愿与历史录取分数对比（调试用）
+    SELECT
+        vr.volunteer_order,
+        u.university_name,
+        m.major_name,
+        ha.admission_number AS original_admission_score,
+        IFNULL(ha.admission_number, 0) AS processed_admission_score,
+        stu_score AS student_score,
+        stu_score - 20 AS lower_bound,
+        stu_score + 20 AS upper_bound,
+        CASE
+            WHEN ha.admission_number IS NULL THEN '无历史数据'
+            WHEN ha.admission_number > stu_score + 20 THEN '冲刺志愿'
+            WHEN ha.admission_number BETWEEN stu_score - 20 AND stu_score + 20 THEN '稳妥志愿'
+            ELSE '保底志愿'
+        END AS volunteer_type_with_null,
+        CASE
+            WHEN IFNULL(ha.admission_number, 0) > stu_score + 20 THEN '冲刺志愿'
+            WHEN IFNULL(ha.admission_number, 0) BETWEEN stu_score - 20 AND stu_score + 20 THEN '稳妥志愿'
+            ELSE '保底志愿'
+        END AS volunteer_type_with_zero
+    FROM volunteer_relation vr
+    JOIN university u ON vr.university_id = u.university_id
+    JOIN major m ON vr.major_id = m.major_id
+    LEFT JOIN historical_admission ha ON vr.university_id = ha.university_id
+                                    AND vr.major_id = ha.major_id
+    WHERE vr.student_id = stu_id
+    ORDER BY vr.volunteer_order;
+
+    -- 检查历史录取数据是否存在
+    SELECT
+        COUNT(*) AS total_volunteers,
+        SUM(CASE WHEN ha.admission_number IS NOT NULL THEN 1 ELSE 0 END) AS volunteers_with_admission_data,
+        SUM(CASE WHEN ha.admission_number IS NULL THEN 1 ELSE 0 END) AS volunteers_without_admission_data
+    FROM volunteer_relation vr
+    LEFT JOIN historical_admission ha ON vr.university_id = ha.university_id
+                                    AND vr.major_id = ha.major_id
+    WHERE vr.student_id = stu_id;
+
+    -- 修改后的志愿类型判断（使用专业分数线作为备选）
+    SELECT
+        vr.volunteer_order,
+        u.university_name,
+        m.major_name,
+        IFNULL(ha.admission_number, m.line_score) AS reference_score,
+        CASE
+            WHEN ha.admission_number IS NULL THEN '使用专业分数线'
+            ELSE '使用历史录取分数'
+        END AS score_source,
+        CASE
+            WHEN IFNULL(ha.admission_number, m.line_score) > stu_score + 20 THEN '冲刺志愿'
+            WHEN IFNULL(ha.admission_number, m.line_score) BETWEEN stu_score - 20 AND stu_score + 20 THEN '稳妥志愿'
+            ELSE '保底志愿'
+        END AS improved_volunteer_type
+    FROM volunteer_relation vr
+    JOIN university u ON vr.university_id = u.university_id
+    JOIN major m ON vr.major_id = m.major_id
+    LEFT JOIN historical_admission ha ON vr.university_id = ha.university_id
+                                    AND vr.major_id = ha.major_id
+    WHERE vr.student_id = stu_id
+    ORDER BY vr.volunteer_order;
+END //
+DELIMITER ;
+
+-- 调用存储过程
+CALL analyze_student_volunteer_strategy('20230001');
+
+
+### 7. 院校专业匹配度分析
+DELIMITER //
+DROP PROCEDURE IF EXISTS analyze_university_major_match //
+CREATE PROCEDURE analyze_university_major_match(
+    IN uni_id VARCHAR(10),
+    IN maj_id VARCHAR(10)
+)
+proc_label: BEGIN
+    DECLARE university_exists INT DEFAULT 0;
+    DECLARE major_exists INT DEFAULT 0;
+    DECLARE match_exists INT DEFAULT 0;
+
+    -- 检查大学和专业是否存在
+    SELECT COUNT(*) INTO university_exists FROM university WHERE university_id = uni_id;
+    SELECT COUNT(*) INTO major_exists FROM major WHERE major_id = maj_id;
+
+    -- 如果大学或专业不存在，显示错误信息
+    IF university_exists = 0 OR major_exists = 0 THEN
+        SELECT
+            CONCAT('错误: ',
+                  IF(university_exists = 0, '大学ID不存在', ''),
+                  IF(major_exists = 0, ' 专业ID不存在', '')
+            ) AS message,
+            (SELECT GROUP_CONCAT(university_id, ': ', university_name)
+             FROM university LIMIT 5) AS available_universities,
+            (SELECT GROUP_CONCAT(major_id, ': ', major_name)
+             FROM major LIMIT 5) AS available_majors;
+        LEAVE proc_label;
+    END IF;
+
+    -- 检查该大学是否有该专业
+    SELECT COUNT(*) INTO match_exists
+    FROM enrollment_plan
+    WHERE university_id = uni_id AND major_id = maj_id;
+
+    -- 如果没有匹配记录，给出提示但继续执行
+    IF match_exists = 0 THEN
+        SELECT '注意: 该大学可能没有开设此专业，以下分析基于假设该专业存在' AS warning;
+    END IF;
+
+    -- 获取大学和专业的基本信息
+    SELECT
+        u.university_name,
+        u.level,
+        u.ranking,
+        m.major_name,
+        dc.category_name,
+        m.line_score
+    INTO
+        @uni_name,
+        @uni_level,
+        @uni_rank,
+        @major_name,
+        @category_name,
+        @line_score
+    FROM university u
+    CROSS JOIN major m
+    JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+    WHERE u.university_id = uni_id AND m.major_id = maj_id;
+
+    -- 获取招生计划和历史录取数据
+    SELECT
+        IFNULL(MAX(ep.enrollment_number), 0),
+        IFNULL(MAX(ha.admission_number), 0)
+    INTO
+        @enrollment_number,
+        @admission_number
+    FROM university u
+    CROSS JOIN major m
+    LEFT JOIN enrollment_plan ep ON u.university_id = ep.university_id
+                               AND m.major_id = ep.major_id
+    LEFT JOIN historical_admission ha ON u.university_id = ha.university_id
+                                    AND m.major_id = ha.major_id
+    WHERE u.university_id = uni_id AND m.major_id = maj_id;
+
+    -- 计算志愿人数
+    SELECT COUNT(*) INTO @popularity_count
+    FROM volunteer_relation
+    WHERE university_id = uni_id AND major_id = maj_id;
+
+    -- 返回单一结果集，包含所有信息
+    SELECT
+        uni_id AS university_id,
+        @uni_name AS university_name,
+        @uni_level AS level,
+        @uni_rank AS university_ranking,
+        maj_id AS major_id,
+        @major_name AS major_name,
+        @category_name AS discipline_category,
+        @line_score AS major_line_score,
+        @enrollment_number AS planned_enrollment,
+        @admission_number AS last_year_admission_score,
+        @popularity_count AS popularity_count,
+
+        -- 大学层次评价
+        CASE
+            WHEN @uni_level = '985工程' THEN '顶尖'
+            WHEN @uni_level = '211工程' THEN '一流'
+            WHEN @uni_rank <= 100 THEN '优秀'
+            WHEN @uni_rank <= 300 THEN '良好'
+            ELSE '一般'
+        END AS university_tier,
+
+        -- 专业热度评价
+        CASE
+            WHEN @line_score >= 600 THEN '热门专业'
+            WHEN @line_score >= 550 THEN '较热门专业'
+            ELSE '普通专业'
+        END AS major_popularity,
+
+        -- 匹配度评价
+        CASE
+            WHEN @uni_level IN ('985工程', '211工程') AND @line_score >= 600 THEN '优质匹配：名校热门专业'
+            WHEN @uni_level IN ('985工程', '211工程') THEN '良好匹配：名校专业'
+            WHEN @uni_rank <= 100 AND @line_score >= 550 THEN '良好匹配：优质大学热门专业'
+            WHEN @line_score >= 600 THEN '中等匹配：热门专业'
+            ELSE '一般匹配'
+        END AS match_evaluation,
+
+        -- 就业前景评价
+        CASE
+            WHEN @uni_level IN ('985工程', '211工程') AND @line_score >= 600 THEN '就业前景优秀'
+            WHEN @uni_level IN ('985工程', '211工程') OR @line_score >= 600 THEN '就业前景良好'
+            WHEN @uni_rank <= 200 OR @line_score >= 550 THEN '就业前景中上'
+            ELSE '就业前景一般'
+        END AS employment_prospect,
+
+        -- 录取难度评价
+        CASE
+            WHEN @admission_number > 650 THEN '录取难度高'
+            WHEN @admission_number > 600 THEN '录取难度中等'
+            WHEN @admission_number > 550 THEN '录取难度适中'
+            ELSE '录取难度较低'
+        END AS admission_difficulty,
+
+        -- 相似专业推荐
+        (SELECT GROUP_CONCAT(major_name SEPARATOR '、')
+         FROM (
+             SELECT m2.major_name
+             FROM major m
+             JOIN major m2 ON m.discipline_category_id = m2.discipline_category_id AND m.major_id != m2.major_id
+             WHERE m.major_id = maj_id
+             ORDER BY ABS(m.line_score - m2.line_score)
+             LIMIT 3
+         ) AS similar_majors
+        ) AS similar_majors_at_university,
+
+        -- 推荐指数
+        CASE
+            WHEN @uni_level IN ('985工程', '211工程') AND @line_score >= 600 THEN 5
+            WHEN @uni_level IN ('985工程', '211工程') OR @line_score >= 600 THEN 4
+            WHEN @uni_rank <= 200 OR @line_score >= 550 THEN 3
+            ELSE 2
+        END AS recommendation_score,
+
+        -- 备注
+        CASE
+            WHEN match_exists = 0 THEN '注意：该大学可能未开设此专业，请确认'
+            WHEN @enrollment_number = 0 THEN '注意：未找到招生计划数据'
+            WHEN @admission_number = 0 THEN '注意：未找到历史录取数据'
+            ELSE '数据完整'
+        END AS remarks;
+END //
+DELIMITER ;
+
+call analyze_university_major_match('10004', '080901');
+
+
+
+-- 触发器
+
+
+
+

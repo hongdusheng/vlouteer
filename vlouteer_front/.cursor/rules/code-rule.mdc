@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1.该项目开发所使用的技术栈为 Vue3 + ElementPlus + Vite + Axios + VueRouter
+2.生成的JS代码，帮我添加简单的注释说明
+3.与服务端交互的代码，帮我定义一个工具类，里面封装axios的实体对象，便于扩展使用
+4.每一个模块与服务端交互的操作，单独定义一个js文件(放在api目录下)，方便管理
+5.所有的前端异步请求，最终要访问的服务端地址为: http://localhost:8080
+
+6.每次对话采用中文形式

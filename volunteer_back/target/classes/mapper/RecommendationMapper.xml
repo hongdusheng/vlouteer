@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itcao.volunteer_back_system.mapper.RecommendationMapper">
+
+    <!-- 定义RecommendationItem的结果映射 -->
+    <resultMap id="recommendationItemMap" type="com.itcao.volunteer_back_system.Dto.RecommendationItem">
+        <result column="university_name" property="universityName"/>
+        <result column="university_id" property="universityId"/>
+        <result column="major_name" property="majorName"/>
+        <result column="major_id" property="majorId"/>
+        <result column="last_year_admission" property="lastYearAdmission"/>
+        <result column="score_difference" property="scoreDifference"/>
+    </resultMap>
+    
+    <!-- 定义VolunteerItem的结果映射 -->
+    <resultMap id="volunteerItemMap" type="com.itcao.volunteer_back_system.Dto.VolunteerItem">
+        <result column="volunteer_order" property="volunteerOrder"/>
+        <result column="university_name" property="universityName"/>
+        <result column="major_name" property="majorName"/>
+        <result column="year" property="year"/>
+        <result column="admission_number" property="admissionNumber"/>
+    </resultMap>
+    
+    <!-- 定义ConflictItem的结果映射 -->
+    <resultMap id="conflictItemMap" type="com.itcao.volunteer_back_system.Dto.ConflictItem">
+        <result column="order1" property="order1"/>
+        <result column="uni1" property="uni1"/>
+        <result column="major1" property="major1"/>
+        <result column="score1" property="score1"/>
+        <result column="order2" property="order2"/>
+        <result column="uni2" property="uni2"/>
+        <result column="major2" property="major2"/>
+        <result column="score2" property="score2"/>
+        <result column="advice" property="advice"/>
+    </resultMap>
+
+    <!-- 调用智能志愿推荐存储过程 -->
+    <select id="callFlexibleRecommendation" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL flexible_recommendation(#{studentId,mode=IN})}
+    </select>
+
+    <!-- 调用志愿冲突检测存储过程 -->
+    <select id="callCheckVolunteerConflict" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL check_volunteer_conflict(#{studentId,mode=IN})}
+    </select>
+
+    <!-- 调用录取概率预测存储过程 -->
+    <select id="callPredictAdmissionProbability" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL predict_admission_probability(#{studentId,mode=IN}, #{universityId,mode=IN}, #{majorId,mode=IN})}
+    </select>
+
+    <!-- 调用专业就业前景分析存储过程 -->
+    <select id="callAnalyzeMajorEmploymentProspects" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL analyze_major_employment_prospects(#{majorId,mode=IN})}
+    </select>
+
+    <!-- 调用省份分数线分析存储过程 -->
+    <select id="callAnalyzeProvinceScoreTrends" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL analyze_province_score_trends(#{provinceId,mode=IN}, #{disciplineCategoryId,mode=IN})}
+    </select>
+
+    <!-- 调用志愿综合分析存储过程 -->
+    <select id="callAnalyzeStudentVolunteerStrategy" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL analyze_student_volunteer_strategy(#{studentId,mode=IN})}
+    </select>
+
+    <!-- 调用院校专业匹配度分析存储过程 -->
+    <select id="callAnalyzeUniversityMajorMatch" resultType="java.util.Map" statementType="CALLABLE">
+        {CALL analyze_university_major_match(#{universityId,mode=IN}, #{majorId,mode=IN})}
+    </select>
+
+    <!-- 获取学科门类列表 -->
+    <select id="getDisciplineCategories" resultType="java.util.Map">
+        SELECT 
+            category_id as categoryId, 
+            category_name as categoryName, 
+            code as code 
+        FROM discipline_category 
+        ORDER BY code ASC
+    </select>
+</mapper> 

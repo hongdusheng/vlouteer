@@ -1,0 +1,166 @@
+
+CREATE TABLE `discipline_category` (
+  `category_id` int NOT NULL AUTO_INCREMENT COMMENT '门类编号',
+  `category_name` varchar(30) NOT NULL COMMENT '名称',
+  `code` varchar(10) NOT NULL COMMENT '代码',
+  PRIMARY KEY (`category_id`),
+  UNIQUE KEY `category_name` (`category_name`),
+  UNIQUE KEY `code` (`code`)
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='学科门类表'
+
+
+CREATE TABLE `enrollment_plan` (
+  `plan_id` int NOT NULL AUTO_INCREMENT COMMENT '计划ID',
+  `university_id` varchar(10) NOT NULL COMMENT '院校编号',
+  `major_id` varchar(10) NOT NULL COMMENT '专业编号',
+  `enrollment_year` year NOT NULL COMMENT '招生年份',
+  `enrollment_number` int NOT NULL COMMENT '招生人数',
+  PRIMARY KEY (`plan_id`),
+  UNIQUE KEY `university_id` (`university_id`,`major_id`,`enrollment_year`),
+  KEY `major_id` (`major_id`),
+  CONSTRAINT `enrollment_plan_ibfk_1` FOREIGN KEY (`university_id`) REFERENCES `university` (`university_id`),
+  CONSTRAINT `enrollment_plan_ibfk_2` FOREIGN KEY (`major_id`) REFERENCES `major` (`major_id`),
+  CONSTRAINT `enrollment_plan_chk_1` CHECK ((`enrollment_number` > 0))
+) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='招生计划表'
+
+
+
+CREATE TABLE `historical_admission` (
+  `data_id` int NOT NULL AUTO_INCREMENT COMMENT '数据ID',
+  `university_id` varchar(10) NOT NULL COMMENT '院校编号',
+  `major_id` varchar(10) NOT NULL COMMENT '专业编号',
+  `year` year NOT NULL COMMENT '年份',
+  `admission_number` int NOT NULL COMMENT '录取人数',
+  PRIMARY KEY (`data_id`),
+  UNIQUE KEY `university_id` (`university_id`,`major_id`,`year`),
+  KEY `major_id` (`major_id`),
+  CONSTRAINT `historical_admission_ibfk_1` FOREIGN KEY (`university_id`) REFERENCES `university` (`university_id`),
+  CONSTRAINT `historical_admission_ibfk_2` FOREIGN KEY (`major_id`) REFERENCES `major` (`major_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='历年录取数据表'
+
+
+
+
+CREATE TABLE `major` (
+  `major_id` varchar(10) NOT NULL COMMENT '专业编号',
+  `major_name` varchar(50) NOT NULL COMMENT '名称',
+  `discipline_category_id` int NOT NULL COMMENT '学科门类',
+  `schooling_length` tinyint NOT NULL COMMENT '学制',
+  `degree_type` varchar(20) NOT NULL COMMENT '学位类型',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `line_score` int DEFAULT NULL COMMENT '分数线',
+  PRIMARY KEY (`major_id`),
+  KEY `discipline_category_id` (`discipline_category_id`),
+  CONSTRAINT `major_ibfk_1` FOREIGN KEY (`discipline_category_id`) REFERENCES `discipline_category` (`category_id`),
+  CONSTRAINT `major_chk_1` CHECK ((`schooling_length` between 2 and 8))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='专业表'
+
+
+
+
+CREATE TABLE `province` (
+  `province_id` int NOT NULL AUTO_INCREMENT COMMENT '省份编号',
+  `province_name` varchar(20) NOT NULL COMMENT '名称',
+  `region` varchar(20) NOT NULL COMMENT '地区',
+  PRIMARY KEY (`province_id`),
+  UNIQUE KEY `province_name` (`province_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='省份表'
+
+
+
+CREATE TABLE `student` (
+  `student_id` varchar(18) NOT NULL COMMENT '学号',
+  `student_name` varchar(50) NOT NULL COMMENT '姓名',
+  `id_card` varchar(18) NOT NULL COMMENT '身份证号',
+  `gender` char(1) DEFAULT NULL COMMENT '性别',
+  `college_entrance_exam_score` decimal(5,1) NOT NULL COMMENT '高考成绩',
+  `province_id` int NOT NULL COMMENT '省份编号',
+  `ranking` int DEFAULT NULL COMMENT '排名',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`student_id`),
+  UNIQUE KEY `id_card` (`id_card`),
+  KEY `province_id` (`province_id`),
+  CONSTRAINT `student_ibfk_1` FOREIGN KEY (`province_id`) REFERENCES `province` (`province_id`),
+  CONSTRAINT `student_chk_1` CHECK ((`gender` in (_utf8mb4'男',_utf8mb4'女')))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='学生表'
+
+
+
+
+
+CREATE TABLE `system_user` (
+  `user_id` int NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  `username` varchar(50) NOT NULL COMMENT '用户名',
+  `password` varchar(100) NOT NULL COMMENT '密码',
+  `role` varchar(20) NOT NULL COMMENT '角色',
+  `student_id` varchar(18) DEFAULT NULL COMMENT '学号',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `student_id` (`student_id`),
+  CONSTRAINT `system_user_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `student` (`student_id`),
+  CONSTRAINT `system_user_chk_1` CHECK ((`role` in (_utf8mb4'admin',_utf8mb4'student')))
+) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='系统用户表'
+
+
+
+
+CREATE TABLE `university` (
+  `university_id` varchar(10) NOT NULL COMMENT '院校编号',
+  `university_name` varchar(100) NOT NULL COMMENT '名称',
+  `province_id` int NOT NULL COMMENT '省份编号',
+  `type_id` int NOT NULL COMMENT '类型编号',
+  `level` varchar(20) NOT NULL COMMENT '层次',
+  `ranking` int DEFAULT NULL COMMENT '院校排名',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`university_id`),
+  KEY `province_id` (`province_id`),
+  KEY `type_id` (`type_id`),
+  CONSTRAINT `university_ibfk_1` FOREIGN KEY (`province_id`) REFERENCES `province` (`province_id`),
+  CONSTRAINT `university_ibfk_2` FOREIGN KEY (`type_id`) REFERENCES `university_type` (`type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='院校表'
+
+
+
+CREATE TABLE `university_type` (
+  `type_id` int NOT NULL AUTO_INCREMENT COMMENT '类型编号',
+  `type_name` varchar(20) NOT NULL COMMENT '名称',
+  `description` varchar(100) DEFAULT NULL COMMENT '描述',
+  PRIMARY KEY (`type_id`),
+  UNIQUE KEY `type_name` (`type_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='院校类型表'
+
+
+
+CREATE TABLE `volunteer_relation` (
+  `relation_id` int NOT NULL AUTO_INCREMENT COMMENT '关系ID',
+  `student_id` varchar(18) NOT NULL COMMENT '学号',
+  `university_id` varchar(10) NOT NULL COMMENT '院校编号',
+  `major_id` varchar(10) NOT NULL COMMENT '专业编号',
+  `volunteer_order` tinyint NOT NULL COMMENT '志愿顺序',
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`relation_id`),
+  UNIQUE KEY `student_id` (`student_id`,`volunteer_order`),
+  KEY `university_id` (`university_id`),
+  KEY `major_id` (`major_id`),
+  CONSTRAINT `volunteer_relation_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `student` (`student_id`),
+  CONSTRAINT `volunteer_relation_ibfk_2` FOREIGN KEY (`university_id`) REFERENCES `university` (`university_id`),
+  CONSTRAINT `volunteer_relation_ibfk_3` FOREIGN KEY (`major_id`) REFERENCES `major` (`major_id`),
+  CONSTRAINT `volunteer_relation_chk_1` CHECK ((`volunteer_order` between 1 and 30))
+) ENGINE=InnoDB AUTO_INCREMENT=31 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='考生志愿关系表'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itcao.volunteer_back_system.mapper.UniversityMapper">
+
+    <!-- 查询所有大学 -->
+    <select id="getAllUniversities" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, 
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+    </select>
+
+    <!-- 查询单个大学 -->
+    <select id="getUniversityById" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, p.province_name as province,
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        LEFT JOIN province p ON u.province_id = p.province_id
+        WHERE u.university_id = #{id}
+    </select>
+
+    <!-- 查询某个省份的大学 -->
+    <select id="getUniversitiesByProvinceId" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, 
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        WHERE u.province_id = #{provinceId}
+    </select>
+
+    <!-- 查询某个类型的大学 -->
+    <select id="getUniversitiesByTypeId" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, 
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        WHERE u.type_id = #{typeId}
+    </select>
+
+    <!-- 模糊查询大学 -->
+    <select id="searchUniversitiesByName" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*,
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        WHERE u.university_name LIKE CONCAT('%', #{name}, '%')
+    </select>
+
+    <!-- 删除大学 -->
+    <delete id="deleteUniversityById">
+        DELETE FROM university WHERE university_id = #{id}
+    </delete>
+
+    <!-- 分页查询大学列表 -->
+    <select id="getUniversityPage" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, p.province_name as province, 
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        LEFT JOIN province p ON u.province_id = p.province_id
+        <where>
+            <if test="schoolCode != null and schoolCode != ''">AND u.university_id = #{schoolCode}</if>
+            <if test="schoolName != null and schoolName != ''">AND u.university_name LIKE CONCAT('%', #{schoolName}, '%')</if>
+            <if test="level != null and level != ''">AND u.level = #{level}</if>
+            <if test="typeId != null">AND u.type_id = #{typeId}</if>
+            <if test="province != null and province != ''">AND p.province_name LIKE CONCAT('%', #{province}, '%')</if>
+        </where>
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 查询大学总数 -->
+    <select id="getUniversityCount" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM university u
+        LEFT JOIN province p ON u.province_id = p.province_id
+        <where>
+            <if test="schoolCode != null and schoolCode != ''">AND u.university_id = #{schoolCode}</if>
+            <if test="schoolName != null and schoolName != ''">AND u.university_name LIKE CONCAT('%', #{schoolName}, '%')</if>
+            <if test="level != null and level != ''">AND u.level = #{level}</if>
+            <if test="typeId != null">AND u.type_id = #{typeId}</if>
+            <if test="province != null and province != ''">AND p.province_name LIKE CONCAT('%', #{province}, '%')</if>
+        </where>
+    </select>
+
+    <!-- 根据编码查询大学 -->
+    <select id="getUniversityByCode" resultType="com.itcao.volunteer_back_system.pojo.University">
+        SELECT u.*, p.province_name as province,
+               u.create_time as createTime,
+               (SELECT IFNULL(SUM(ep.enrollment_number), 0) FROM enrollment_plan ep WHERE ep.university_id = u.university_id) as enrollmentNumber
+        FROM university u
+        LEFT JOIN province p ON u.province_id = p.province_id
+        WHERE u.university_id = #{code}
+    </select>
+
+    <!-- 新增大学 -->
+    <insert id="insertUniversity" parameterType="com.itcao.volunteer_back_system.pojo.University">
+        INSERT INTO university(university_id, university_name, province_id, type_id, level, ranking)
+        VALUES(#{universityId}, #{universityName}, #{provinceId}, #{typeId}, #{level}, #{ranking})
+    </insert>
+
+    <!-- 更新大学 -->
+    <update id="updateUniversity" parameterType="com.itcao.volunteer_back_system.pojo.University">
+        UPDATE university SET
+            university_name = #{universityName},
+            province_id = #{provinceId},
+            type_id = #{typeId},
+            level = #{level},
+            ranking = #{ranking}
+        WHERE university_id = #{universityId}
+    </update>
+
+    <!-- 批量删除大学 -->
+    <delete id="deleteUniversities">
+        DELETE FROM university WHERE university_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <!-- 查询所有大学类型 -->
+    <select id="getUniversityTypes" resultType="com.itcao.volunteer_back_system.pojo.UniversityType">
+        SELECT * FROM university_type
+    </select>
+</mapper> 

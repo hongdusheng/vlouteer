@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itcao.volunteer_back_system.mapper.ApplicationMapper">
+
+    <!-- 分页查询志愿信息列表 -->
+    <select id="getApplicationPage" resultType="com.itcao.volunteer_back_system.pojo.Application">
+        SELECT 
+            vr.relation_id as relationId, 
+            vr.student_id as studentId, 
+            vr.university_id as universityId, 
+            vr.major_id as majorId, 
+            vr.volunteer_order as volunteerOrder, 
+            vr.create_time as createTime,
+            u.university_name as universityName, 
+            m.major_name as majorName
+        FROM volunteer_relation vr
+        LEFT JOIN university u ON vr.university_id = u.university_id
+        LEFT JOIN major m ON vr.major_id = m.major_id
+        <where>
+            <if test="studentId != null and studentId != ''">AND vr.student_id = #{studentId}</if>
+        </where>
+        ORDER BY vr.volunteer_order ASC
+--         LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 查询志愿信息总数 -->
+    <select id="getApplicationCount" resultType="java.lang.Long">
+        SELECT COUNT(*) 
+        FROM volunteer_relation vr
+        <where>
+            <if test="studentId != null and studentId != ''">AND vr.student_id = #{studentId}</if>
+        </where>
+    </select>
+
+    <!-- 根据ID查询志愿信息 -->
+    <select id="getApplicationById" resultType="com.itcao.volunteer_back_system.pojo.Application">
+        SELECT 
+            vr.relation_id as relationId, 
+            vr.student_id as studentId, 
+            vr.university_id as universityId, 
+            vr.major_id as majorId, 
+            vr.volunteer_order as volunteerOrder, 
+            vr.create_time as createTime,
+            u.university_name as universityName, 
+            m.major_name as majorName
+        FROM volunteer_relation vr
+        LEFT JOIN university u ON vr.university_id = u.university_id
+        LEFT JOIN major m ON vr.major_id = m.major_id
+        WHERE vr.relation_id = #{id}
+    </select>
+
+    <!-- 新增志愿信息 -->
+    <insert id="insertApplication" parameterType="com.itcao.volunteer_back_system.pojo.Application" useGeneratedKeys="true" keyProperty="relationId">
+        INSERT INTO volunteer_relation(student_id, university_id, major_id, volunteer_order)
+        VALUES(#{studentId}, #{universityId}, #{majorId}, #{volunteerOrder})
+    </insert>
+
+    <!-- 删除志愿信息 -->
+    <delete id="deleteApplication">
+        DELETE FROM volunteer_relation WHERE relation_id = #{id}
+    </delete>
+
+    <!-- 根据学生ID和志愿顺序查询志愿信息 -->
+    <select id="getApplicationByStudentIdAndOrder" resultType="com.itcao.volunteer_back_system.pojo.Application">
+        SELECT 
+            vr.relation_id as relationId, 
+            vr.student_id as studentId, 
+            vr.university_id as universityId, 
+            vr.major_id as majorId, 
+            vr.volunteer_order as volunteerOrder, 
+            vr.create_time as createTime,
+            u.university_name as universityName, 
+            m.major_name as majorName
+        FROM volunteer_relation vr
+        LEFT JOIN university u ON vr.university_id = u.university_id
+        LEFT JOIN major m ON vr.major_id = m.major_id
+        WHERE vr.student_id = #{studentId} AND vr.volunteer_order = #{volunteerOrder}
+    </select>
+
+    <!-- 更新志愿信息 -->
+    <update id="updateApplication" parameterType="com.itcao.volunteer_back_system.pojo.Application">
+        UPDATE volunteer_relation 
+        SET university_id = #{universityId},
+            major_id = #{majorId},
+            create_time = NOW()
+        WHERE relation_id = #{relationId}
+    </update>
+
+    <!-- 检查院校是否存在 -->
+    <select id="checkUniversityExists" resultType="java.lang.Integer">
+        SELECT COUNT(1) FROM university WHERE university_id = #{universityId}
+    </select>
+
+    <!-- 检查专业是否存在 -->
+    <select id="checkMajorExists" resultType="java.lang.Integer">
+        SELECT COUNT(1) FROM major WHERE major_id = #{majorId}
+    </select>
+
+    <!-- 分页查询志愿管理列表 -->
+    <select id="getApplicationManagePage" resultType="com.itcao.volunteer_back_system.Dto.ApplicationListDTO">
+        SELECT 
+            MIN(vr.relation_id) as relationId,
+            s.student_id as studentId,
+            s.student_name as studentName,
+            p.province_name as province,
+            MIN(vr.create_time) as createTime
+        FROM volunteer_relation vr
+        JOIN student s ON vr.student_id = s.student_id
+        JOIN province p ON s.province_id = p.province_id
+        <where>
+            <if test="studentId != null and studentId != ''">AND s.student_id LIKE CONCAT('%', #{studentId}, '%')</if>
+            <if test="studentName != null and studentName != ''">AND s.student_name LIKE CONCAT('%', #{studentName}, '%')</if>
+            <if test="province != null and province != ''">AND p.province_name LIKE CONCAT('%', #{province}, '%')</if>
+        </where>
+        GROUP BY s.student_id, s.student_name, p.province_name
+        ORDER BY MIN(vr.create_time) DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+    
+    <!-- 查询志愿管理总数 -->
+    <select id="getApplicationManageCount" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT s.student_id)
+        FROM volunteer_relation vr
+        JOIN student s ON vr.student_id = s.student_id
+        JOIN province p ON s.province_id = p.province_id
+        <where>
+            <if test="studentId != null and studentId != ''">AND s.student_id LIKE CONCAT('%', #{studentId}, '%')</if>
+            <if test="studentName != null and studentName != ''">AND s.student_name LIKE CONCAT('%', #{studentName}, '%')</if>
+            <if test="province != null and province != ''">AND p.province_name LIKE CONCAT('%', #{province}, '%')</if>
+        </where>
+    </select>
+    
+    <!-- 根据学生ID查询该学生的所有志愿信息 -->
+    <select id="getApplicationsByStudentId" resultType="com.itcao.volunteer_back_system.pojo.Application">
+        SELECT 
+            vr.relation_id as relationId, 
+            vr.student_id as studentId, 
+            vr.university_id as universityId, 
+            vr.major_id as majorId, 
+            vr.volunteer_order as volunteerOrder, 
+            vr.create_time as createTime,
+            u.university_name as universityName, 
+            m.major_name as majorName
+        FROM volunteer_relation vr
+        LEFT JOIN university u ON vr.university_id = u.university_id
+        LEFT JOIN major m ON vr.major_id = m.major_id
+        WHERE vr.student_id = #{studentId}
+        ORDER BY vr.volunteer_order ASC
+    </select>
+</mapper> 

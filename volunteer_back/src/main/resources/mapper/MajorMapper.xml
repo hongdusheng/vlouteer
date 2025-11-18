@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itcao.volunteer_back_system.mapper.MajorMapper">
+
+    <!-- 分页查询专业列表 -->
+    <select id="getMajorPage" resultType="com.itcao.volunteer_back_system.pojo.Major">
+        SELECT 
+            m.*, 
+            dc.category_name as disciplineCategoryName,
+            COALESCE(u.university_id, '10001') as universityId,
+            COALESCE(u.university_name, '北方综合大学') as universityName,
+            m.create_time as createTime
+        FROM major m
+        LEFT JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+        LEFT JOIN (
+            SELECT DISTINCT ep.major_id, u.university_id, u.university_name
+            FROM enrollment_plan ep
+            JOIN university u ON ep.university_id = u.university_id
+        ) u ON m.major_id = u.major_id
+        <where>
+            <if test="majorCode != null and majorCode != ''">AND m.major_id = #{majorCode}</if>
+            <if test="majorName != null and majorName != ''">AND m.major_name LIKE CONCAT('%', #{majorName}, '%')</if>
+            <if test="schoolCode != null and schoolCode != ''">AND u.university_id = #{schoolCode}</if>
+            <if test="schoolName != null and schoolName != ''">AND u.university_name LIKE CONCAT('%', #{schoolName}, '%')</if>
+        </where>
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 查询专业总数 -->
+    <select id="getMajorCount" resultType="java.lang.Long">
+        SELECT COUNT(*) 
+        FROM major m
+        LEFT JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+        LEFT JOIN (
+            SELECT DISTINCT ep.major_id, u.university_id, u.university_name
+            FROM enrollment_plan ep
+            JOIN university u ON ep.university_id = u.university_id
+        ) u ON m.major_id = u.major_id
+        <where>
+            <if test="majorCode != null and majorCode != ''">AND m.major_id = #{majorCode}</if>
+            <if test="majorName != null and majorName != ''">AND m.major_name LIKE CONCAT('%', #{majorName}, '%')</if>
+            <if test="schoolCode != null and schoolCode != ''">AND u.university_id = #{schoolCode}</if>
+            <if test="schoolName != null and schoolName != ''">AND u.university_name LIKE CONCAT('%', #{schoolName}, '%')</if>
+        </where>
+    </select>
+
+    <!-- 根据ID查询专业信息 -->
+    <select id="getMajorById" resultType="com.itcao.volunteer_back_system.pojo.Major">
+        SELECT 
+            m.*, 
+            dc.category_name as disciplineCategoryName,
+            COALESCE(u.university_id, '10001') as universityId,
+            COALESCE(u.university_name, '北方综合大学') as universityName,
+            m.create_time as createTime
+        FROM major m
+        LEFT JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+        LEFT JOIN (
+            SELECT DISTINCT ep.major_id, u.university_id, u.university_name
+            FROM enrollment_plan ep
+            JOIN university u ON ep.university_id = u.university_id
+            WHERE ep.major_id = #{id}
+            LIMIT 1
+        ) u ON m.major_id = u.major_id
+        WHERE m.major_id = #{id}
+    </select>
+
+    <!-- 根据编码查询专业信息 -->
+    <select id="getMajorByCode" resultType="com.itcao.volunteer_back_system.pojo.Major">
+        SELECT 
+            m.*, 
+            dc.category_name as disciplineCategoryName,
+            COALESCE(u.university_id, '10001') as universityId,
+            COALESCE(u.university_name, '北方综合大学') as universityName,
+            m.create_time as createTime
+        FROM major m
+        LEFT JOIN discipline_category dc ON m.discipline_category_id = dc.category_id
+        LEFT JOIN (
+            SELECT DISTINCT ep.major_id, u.university_id, u.university_name
+            FROM enrollment_plan ep
+            JOIN university u ON ep.university_id = u.university_id
+            WHERE ep.major_id = #{code}
+            LIMIT 1
+        ) u ON m.major_id = u.major_id
+        WHERE m.major_id = #{code}
+    </select>
+
+    <!-- 新增专业信息 -->
+    <insert id="insertMajor" parameterType="com.itcao.volunteer_back_system.pojo.Major">
+        INSERT INTO major(major_id, major_name, discipline_category_id, schooling_length, degree_type, line_score)
+        VALUES(#{majorId}, #{majorName}, #{disciplineCategoryId}, #{schoolingLength}, #{degreeType}, #{lineScore})
+    </insert>
+
+    <!-- 更新专业信息 -->
+    <update id="updateMajor" parameterType="com.itcao.volunteer_back_system.pojo.Major">
+        UPDATE major SET 
+            major_name = #{majorName}, 
+            discipline_category_id = #{disciplineCategoryId},
+            schooling_length = #{schoolingLength}, 
+            degree_type = #{degreeType}, 
+            line_score = #{lineScore}
+        WHERE major_id = #{majorId}
+    </update>
+
+    <!-- 批量删除专业信息 -->
+    <delete id="deleteMajors">
+        DELETE FROM major WHERE major_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+    <!-- 查询所有学科类别 -->
+    <select id="getDisciplineCategories" resultType="com.itcao.volunteer_back_system.pojo.DisciplineCategory">
+        SELECT * FROM discipline_category
+    </select>
+</mapper> 

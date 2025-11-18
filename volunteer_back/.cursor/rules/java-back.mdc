@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+1.该项目开发所使用的技术栈为 JAVA+ springBoot+ mybatis+spring MVC
+2.生成的每个方法，帮我添加简单的注释说明
+3.采用三层架构，controller+service（.impl）+mapper
+4.所有涉及到的SQL语句都要定义在 对应的*.xml文件里
+5.每个路径前缀对应一组controller+service（.impl）+mapper，如 “/user”对应 UserController、UserService、UserServiceImpl、UserMapper、UserMapper.xml
+
+6.每次对话采用中文形式

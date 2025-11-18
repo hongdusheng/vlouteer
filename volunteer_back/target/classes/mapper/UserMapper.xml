@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.itcao.volunteer_back_system.mapper.UserMapper">
+
+    <!-- 用户登录 -->
+    <select id="login" resultType="com.itcao.volunteer_back_system.pojo.User">
+        SELECT 
+            user_id as userId, 
+            username, 
+            password, 
+            role, 
+            student_id as studentId, 
+            create_time as createTime,
+            status
+        FROM system_user 
+        WHERE username = #{username} AND password = #{password}
+    </select>
+
+    <!-- 根据ID获取用户 -->
+    <select id="getUserById" resultType="com.itcao.volunteer_back_system.pojo.User">
+        SELECT 
+            user_id as userId, 
+            username, 
+            password, 
+            role, 
+            student_id as studentId, 
+            create_time as createTime,
+            status
+        FROM system_user 
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 获取所有用户列表 -->
+    <select id="getUserList" resultType="com.itcao.volunteer_back_system.pojo.User">
+        SELECT 
+            user_id as userId, 
+            username, 
+            role, 
+            student_id as studentId, 
+            create_time as createTime,
+            status
+        FROM system_user
+    </select>
+
+    <!-- 分页获取用户列表 -->
+    <select id="getUserPage" resultType="com.itcao.volunteer_back_system.pojo.User">
+        SELECT 
+            user_id as userId, 
+            username, 
+            role, 
+            student_id as studentId, 
+            create_time as createTime,
+            status
+        FROM system_user
+        <where>
+            <if test="username != null and username != ''">AND username LIKE CONCAT('%', #{username}, '%')</if>
+            <if test="role != null and role != ''">AND role = #{role}</if>
+        </where>
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 获取用户总数 -->
+    <select id="getUserCount" resultType="java.lang.Long">
+        SELECT COUNT(*) 
+        FROM system_user
+        <where>
+            <if test="username != null and username != ''">AND username LIKE CONCAT('%', #{username}, '%')</if>
+            <if test="role != null and role != ''">AND role = #{role}</if>
+        </where>
+    </select>
+
+    <!-- 新增用户 -->
+    <insert id="insertUser" parameterType="com.itcao.volunteer_back_system.pojo.User" useGeneratedKeys="true" keyProperty="userId">
+        INSERT INTO system_user(username, password, role, student_id) 
+        VALUES(#{username}, #{password}, #{role}, #{studentId})
+    </insert>
+
+    <!-- 更新用户 -->
+    <update id="updateUser" parameterType="com.itcao.volunteer_back_system.pojo.User">
+        UPDATE system_user 
+        SET 
+            username = #{username}, 
+            role = #{role}, 
+            student_id = #{studentId} 
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 更新用户密码 -->
+    <update id="updatePassword" parameterType="com.itcao.volunteer_back_system.pojo.User">
+        UPDATE system_user 
+        SET password = #{password} 
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 更新用户状态 -->
+    <update id="updateStatus">
+        UPDATE system_user 
+        SET status = #{status} 
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 删除用户 -->
+    <delete id="deleteUsers">
+        DELETE FROM system_user 
+        WHERE user_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper> 
